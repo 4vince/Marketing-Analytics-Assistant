@@ -292,11 +292,11 @@ export async function POST(req: Request) {
       });
     }
 
-    // ── Send to AI service ─────────────────────────────────────────────────────
-    const aiRes = await fetch(`${AI_SERVICE}/chat/admin/${body.conversationId}`, {
+    // ── Send to unified AI service endpoint ─────────────────────────────────────
+    const aiRes = await fetch(`${AI_SERVICE}/chat/${body.conversationId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: body.message, catalog }),
+      body: JSON.stringify({ message: body.message, catalog, role: "admin" }),
       signal: AbortSignal.timeout(60000),
     });
 

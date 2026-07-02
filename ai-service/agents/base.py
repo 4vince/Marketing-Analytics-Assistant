@@ -16,6 +16,7 @@ class ChatContext(BaseModel):
     conversation_id: str
     product_catalog: list[dict[str, Any]] = []
     customer_email: str | None = None
+    role: str = "customer"
 
 
 class ChatResponse(BaseModel):

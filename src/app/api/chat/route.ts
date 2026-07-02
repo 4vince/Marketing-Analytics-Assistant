@@ -10,7 +10,11 @@ export async function POST(req: Request) {
     const aiRes = await fetch(`${AI_SERVICE}/chat/${body.conversationId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: body.message, catalog: body.catalog }),
+      body: JSON.stringify({
+        message: body.message,
+        catalog: body.catalog,
+        role: "customer",
+      }),
       signal: AbortSignal.timeout(15000),
     });
     if (!aiRes.ok) throw new Error(`AI service returned ${aiRes.status}`);

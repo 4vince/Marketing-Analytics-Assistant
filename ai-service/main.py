@@ -49,16 +49,23 @@ async def health():
 from agents.quarterly_report import QuarterlyReportAgent
 from agents.product_preference import ProductPreferenceReportAgent
 from orchestrator import Orchestrator
-from agents.chat import StorefrontChatAgent
-from agents.admin_chat import AdminChatAgent
+from agents.supervisor import SupervisorAgent
 from agents.base import ChatContext
 
 orchestrator = Orchestrator()
 
+_supervisor = SupervisorAgent()
+
+
+def _get_supervisor() -> SupervisorAgent:
+    """Lazy singleton for the supervisor agent (reused across requests)."""
+    return _supervisor
+
+
 @app.websocket("/chat/{conversation_id}")
 async def chat_websocket(websocket: WebSocket, conversation_id: str):
     await websocket.accept()
-    agent = StorefrontChatAgent()
+    supervisor = _get_supervisor()
     ctx = ChatContext(conversation_id=conversation_id)
 
     while True:
@@ -67,8 +74,10 @@ async def chat_websocket(websocket: WebSocket, conversation_id: str):
             message = data.get("message", "")
             if data.get("catalog"):
                 ctx.product_catalog = data["catalog"]
+            if data.get("role"):
+                ctx.role = data.get("role", "customer")
 
-            response = await agent.respond(message, ctx)
+            response = await supervisor.respond(message, ctx)
             await websocket.send_json({"type": "response", "message": response.message})
         except WebSocketDisconnect:
             break
@@ -76,23 +85,13 @@ async def chat_websocket(websocket: WebSocket, conversation_id: str):
 
 @app.post("/chat/{conversation_id}")
 async def chat_http(conversation_id: str, data: dict):
-    agent = StorefrontChatAgent()
+    supervisor = _get_supervisor()
     ctx = ChatContext(
         conversation_id=conversation_id,
         product_catalog=data.get("catalog", []),
+        role=data.get("role", "customer"),
     )
-    response = await agent.respond(data.get("message", ""), ctx)
-    return {"message": response.message}
-
-
-@app.post("/chat/admin/{conversation_id}")
-async def admin_chat_http(conversation_id: str, data: dict):
-    agent = AdminChatAgent()
-    ctx = ChatContext(
-        conversation_id=conversation_id,
-        product_catalog=data.get("catalog", []),
-    )
-    response = await agent.respond(data.get("message", ""), ctx)
+    response = await supervisor.respond(data.get("message", ""), ctx)
     return {"message": response.message}
 
 
