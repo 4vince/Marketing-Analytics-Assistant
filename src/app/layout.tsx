@@ -1,10 +1,8 @@
-// Root layout — renders grain overlay, Header, page content, Footer, and ChatWidget for all pages.
+// Root layout — minimal shell (html/body/providers). Storefront chrome (Header/Footer/ChatWidget)
+// lives in (storefront)/layout.tsx so admin pages don't inherit it.
 import type { Metadata } from "next";
 // @ts-ignore: allow importing global CSS in app layout
 import "./globals.css";
-import Header from "@/components/storefront/Header";
-import Footer from "@/components/storefront/Footer";
-import ChatWidget from "@/components/storefront/ChatWidget";
 import { ToastProvider } from "@/components/ui/Toast";
 import VantaBackground from "@/components/storefront/VantaBackground";
 
@@ -21,10 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <VantaBackground />
         <div className="relative z-10 flex flex-col min-h-screen">
           <ToastProvider>
-            <Header />
-            <main className="flex-1">{children}</main>
-            <Footer />
-            <ChatWidget />
+            {children}
           </ToastProvider>
         </div>
       </body>
