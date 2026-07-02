@@ -4,6 +4,5 @@ from .content_quality import ContentQualityAgent
 from .seo import SEOAgent
 from .product_page import ProductPageAgent
 from .content_optimization import ContentOptimizationAgent
-from .product_preference import ProductPreferenceReportAgent
 from .types import AgentType
 from .supervisor import SupervisorAgent
