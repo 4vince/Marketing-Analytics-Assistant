@@ -1,5 +1,16 @@
 # Admin chat agent — business intelligence assistant that answers questions using live store context.
+#
+# SECURITY: This agent passes AgentType.ADMIN, which loads skills ONLY
+# from skills/admin/. Customer-originated text in the context is sanitized
+# via sanitize_customer_text() before it enters any prompt assembly, and
+# injection attempts are logged for monitoring.
+import logging
+
 from .base import ChatAgent, ChatContext, ChatResponse
+from .types import AgentType
+from .sanitizer import sanitize_customer_text, contains_injection_attempt
+
+logger = logging.getLogger(__name__)
 
 
 class AdminChatAgent(ChatAgent):
@@ -7,23 +18,310 @@ class AdminChatAgent(ChatAgent):
 
     Answers questions about products, orders, revenue, traffic, campaigns,
     SEO, and analytics using business context passed in from the live database.
+    Skills are loaded from skills/admin/ only. Customer-originated text is
+    sanitized before prompt assembly.
     """
 
+    def __init__(self):
+        super().__init__(agent_type=AgentType.ADMIN)
+
     async def respond(self, message: str, context: ChatContext) -> ChatResponse:
+        # If no business context was provided by the frontend, auto-fetch
+        # from the database using the scoped admin_user role (read-only).
+        if not context.product_catalog:
+            fetched = await self._fetch_analytics_context()
+            if fetched:
+                context.product_catalog = fetched
+                logger.info(
+                    "[AdminChat] Auto-fetched %d context records via admin_user",
+                    len(fetched),
+                )
+
         system = self._build_system_prompt(context)
         return await self._chat_with_llm(system, message)
 
-    @staticmethod
-    def _build_system_prompt(context: ChatContext) -> str:
-        """Build a system prompt from the business context records."""
-        parts = [
-            "You are a business intelligence assistant for an e-commerce store admin panel.",
-            "You help store admins understand their products, orders, revenue, and analytics.",
-            "Answer concisely and base your answers on the data provided below.",
-            "If you don't know something or the data isn't available, say so.",
-        ]
+    async def _fetch_analytics_context(self) -> list[dict]:
+        """Fetch admin analytics data from PostgreSQL using the scoped admin_user role.
 
+        Connects via DatabasePool using AgentType.ADMIN credentials (read-only).
+        Returns context records in the same format _build_system_prompt expects,
+        or an empty list if the database is unavailable.
+
+        Security: The admin_user role has SELECT-only permissions on all tables
+        (INSERT/UPDATE/DELETE are revoked at the database level). Even if the
+        LLM were to generate a malicious query, it cannot modify data through
+        this connection.
+        """
+        from db import pool
+
+        conn = await pool.get_connection(AgentType.ADMIN)
+        if conn is None:
+            logger.info("[AdminChat] No scoped DB connection available — skipping auto-fetch")
+            return []
+
+        try:
+            context: list[dict] = []
+
+            # ── Product summary ──────────────────────────────────────────────
+            row = await conn.fetchrow("""
+                SELECT COUNT(*)::int AS total,
+                       COUNT(*) FILTER (WHERE status = 'active')::int AS active,
+                       COUNT(DISTINCT category)::int AS categories
+                FROM products
+            """)
+            if row and row["total"] > 0:
+                context.append({
+                    "type": "product_summary",
+                    "total": row["total"],
+                    "active": row["active"],
+                    "categories": row["categories"],
+                })
+
+            # ── Order summary ────────────────────────────────────────────────
+            row = await conn.fetchrow("""
+                SELECT COUNT(*)::int AS total,
+                       MAX(created_at)::text AS latest
+                FROM orders
+            """)
+            if row and row["total"] > 0:
+                latest = row["latest"][:10] if row["latest"] else "N/A"
+                context.append({
+                    "type": "order_summary",
+                    "total": row["total"],
+                    "latest": latest,
+                })
+
+            # ── Revenue ──────────────────────────────────────────────────────
+            row = await conn.fetchrow("""
+                SELECT COALESCE(SUM(total), 0)::int AS total,
+                       COUNT(*)::int AS order_count
+                FROM orders
+            """)
+            if row and row["order_count"] > 0:
+                context.append({
+                    "type": "revenue",
+                    "total": round(row["total"] / 100.0, 2),
+                    "order_count": row["order_count"],
+                })
+
+            # ── Recent orders ────────────────────────────────────────────────
+            rows = await conn.fetch("""
+                SELECT id, customer_name, customer_email, total, status
+                FROM orders
+                ORDER BY created_at DESC
+                LIMIT 5
+            """)
+            if rows:
+                context.append({
+                    "type": "recent_orders",
+                    "orders": [
+                        {
+                            "id": r["id"],
+                            "customer": r["customer_name"],
+                            "total": round(r["total"] / 100.0, 2),
+                            "status": r["status"],
+                        }
+                        for r in rows
+                    ],
+                })
+
+            # ── Order funnel ─────────────────────────────────────────────────
+            rows = await conn.fetch("""
+                SELECT status,
+                       COUNT(*)::int AS count,
+                       COALESCE(SUM(total), 0)::int AS revenue
+                FROM orders
+                GROUP BY status
+            """)
+            if rows:
+                context.append({
+                    "type": "order_funnel",
+                    "funnel": [
+                        {
+                            "status": r["status"],
+                            "count": r["count"],
+                            "revenue": round(r["revenue"] / 100.0, 2),
+                        }
+                        for r in rows
+                    ],
+                })
+
+            # ── Traffic sources ──────────────────────────────────────────────
+            rows = await conn.fetch("""
+                SELECT source,
+                       SUM(visits)::int AS visits,
+                       SUM(orders)::int AS orders,
+                       COALESCE(SUM(revenue), 0)::int AS revenue
+                FROM traffic_sources
+                GROUP BY source
+                ORDER BY visits DESC
+            """)
+            if rows:
+                context.append({
+                    "type": "traffic_sources",
+                    "sources": [
+                        {
+                            "source": r["source"],
+                            "visits": r["visits"],
+                            "orders": r["orders"],
+                            "revenue": str(round(r["revenue"] / 100.0, 2)),
+                        }
+                        for r in rows
+                    ],
+                })
+
+            # ── Campaign performance ─────────────────────────────────────────
+            rows = await conn.fetch("""
+                SELECT name, channel,
+                       SUM(spend)::int AS spend,
+                       SUM(impressions)::int AS impressions,
+                       SUM(clicks)::int AS clicks,
+                       SUM(conversions)::int AS conversions,
+                       COALESCE(SUM(revenue), 0)::int AS revenue
+                FROM campaigns
+                GROUP BY name, channel
+                ORDER BY revenue DESC
+                LIMIT 10
+            """)
+            if rows:
+                context.append({
+                    "type": "campaign_performance",
+                    "campaigns": [
+                        {
+                            "name": r["name"],
+                            "channel": r["channel"],
+                            "spend": str(round(r["spend"] / 100.0, 2)),
+                            "impressions": r["impressions"],
+                            "clicks": r["clicks"],
+                            "conversions": r["conversions"],
+                            "revenue": str(round(r["revenue"] / 100.0, 2)),
+                            "roas": (
+                                f"{r['revenue'] / r['spend']:.2f}"
+                                if r["spend"] > 0 else "0"
+                            ),
+                        }
+                        for r in rows
+                    ],
+                })
+
+            # ── Search query data ────────────────────────────────────────────
+            rows = await conn.fetch("""
+                SELECT query,
+                       SUM(impressions)::int AS impressions,
+                       SUM(clicks)::int AS clicks,
+                       AVG(avg_position)::float AS avg_position
+                FROM search_query_data
+                GROUP BY query
+                ORDER BY impressions DESC
+                LIMIT 10
+            """)
+            if rows:
+                context.append({
+                    "type": "search_query_data",
+                    "queries": [
+                        {
+                            "query": r["query"],
+                            "impressions": r["impressions"],
+                            "clicks": r["clicks"],
+                            "avg_position": r["avg_position"],
+                        }
+                        for r in rows
+                    ],
+                })
+
+            # ── SEO rankings ─────────────────────────────────────────────────
+            rows = await conn.fetch("""
+                SELECT keyword, page, position, search_volume
+                FROM seo_rankings
+                ORDER BY position ASC
+                LIMIT 10
+            """)
+            if rows:
+                context.append({
+                    "type": "seo_rankings",
+                    "keywords": [
+                        {
+                            "keyword": r["keyword"],
+                            "page": r["page"],
+                            "position": r["position"],
+                            "search_volume": r["search_volume"] or 0,
+                        }
+                        for r in rows
+                    ],
+                })
+
+            return context
+
+        except Exception as e:
+            logger.warning(
+                "[AdminChat] Failed to auto-fetch analytics context: %s",
+                e,
+            )
+            return []
+        finally:
+            if conn:
+                await conn.close()
+
+    @staticmethod
+    def _get_role_instructions() -> str:
+        """Role instructions for the admin BI assistant."""
+        return """You are a business intelligence assistant for an e-commerce store admin panel.
+You help store admins understand their products, orders, revenue, and analytics.
+Answer concisely and base your answers on the data provided below.
+If you don't know something or the data isn't available, say so."""
+
+    def _build_system_prompt(self, context: ChatContext) -> str:
+        """Build a system prompt from the business context records.
+
+        Customer-originated text fields are sanitized before inclusion.
+        """
+        # Start with base instructions + admin skills
+        base = self._build_base_system_prompt(context)
+
+        # Build the context data block from the product catalog (sanitized)
         context_data = context.product_catalog or []
+        sanitized_data = self._sanitize_catalog(context_data)
+        context_block = self._format_context_block(sanitized_data)
+
+        if context_block:
+            return f"{base}\n\n{context_block}"
+        return base
+
+    @staticmethod
+    def _sanitize_catalog(records: list[dict]) -> list[dict]:
+        """Sanitize customer-originated text fields in context records.
+
+        Scans all string values in the catalog records (including nested
+        dicts and lists) for prompt injection patterns and sanitizes them.
+        Logs a warning when an attempt is detected.
+        """
+        def _sanitize(value, path=""):
+            if isinstance(value, str):
+                if contains_injection_attempt(value):
+                    logger.warning(
+                        "Injection attempt detected in admin context "
+                        "at '%s': %.80s", path, value
+                    )
+                return sanitize_customer_text(value)
+            elif isinstance(value, dict):
+                return {
+                    k: _sanitize(v, f"{path}.{k}" if path else k)
+                    for k, v in value.items()
+                }
+            elif isinstance(value, list):
+                return [
+                    _sanitize(item, f"{path}[{i}]" if path else f"[{i}]")
+                    for i, item in enumerate(value)
+                ]
+            return value
+
+        return [_sanitize(record) for record in records]
+
+    @staticmethod
+    def _format_context_block(context_data: list[dict]) -> str:
+        """Format business context records into a readable string block."""
+        parts: list[str] = []
+
         for record in context_data:
             record_type = record.get("type", "")
             if record_type == "product_performance":

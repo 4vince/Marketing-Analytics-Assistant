@@ -9,10 +9,13 @@ from agents.base import ChatContext, ChatResponse
 
 
 class TestAdminChatAgent:
+    @pytest.fixture
+    def agent(self):
+        return AdminChatAgent()
+
     @pytest.mark.asyncio
-    async def test_responds_with_context(self):
+    async def test_responds_with_context(self, agent):
         """Agent should respond when given full business context."""
-        agent = AdminChatAgent()
         ctx = ChatContext(
             conversation_id="admin-test-1",
             product_catalog=[
@@ -25,17 +28,15 @@ class TestAdminChatAgent:
         assert len(resp.message) > 0
 
     @pytest.mark.asyncio
-    async def test_responds_without_context(self):
+    async def test_responds_without_context(self, agent):
         """Agent should respond gracefully even without any business context."""
-        agent = AdminChatAgent()
         ctx = ChatContext(conversation_id="admin-test-2")
         resp = await agent.respond("Hello", ctx)
         assert len(resp.message) > 0
 
     @pytest.mark.asyncio
-    async def test_llm_failure_returns_fallback(self):
+    async def test_llm_failure_returns_fallback(self, agent):
         """When the LLM call fails, the agent returns a fallback message."""
-        agent = AdminChatAgent()
         mock_llm = MagicMock()
         mock_llm.chat_async.side_effect = RuntimeError("API failure")
         agent.llm = mock_llm
@@ -44,21 +45,20 @@ class TestAdminChatAgent:
         resp = await agent.respond("Hello", ctx)
 
         assert len(resp.message) > 0
-        # Should have exhausted retries
         assert mock_llm.chat_async.call_count == agent.max_retries + 1
 
-    def test_build_system_prompt_product_summary(self):
+    def test_build_system_prompt_product_summary(self, agent):
         """_build_system_prompt includes product summary data."""
         ctx = ChatContext(
             conversation_id="t",
             product_catalog=[{"type": "product_summary", "total": 30, "active": 25, "categories": 4}],
         )
-        prompt = AdminChatAgent._build_system_prompt(ctx)
+        prompt = agent._build_system_prompt(ctx)
         assert "30 total" in prompt
         assert "25 active" in prompt
         assert "4 categories" in prompt
 
-    def test_build_system_prompt_all_record_types(self):
+    def test_build_system_prompt_all_record_types(self, agent):
         """_build_system_prompt handles all known record types."""
         ctx = ChatContext(
             conversation_id="t",
@@ -85,7 +85,7 @@ class TestAdminChatAgent:
                 },
             ],
         )
-        prompt = AdminChatAgent._build_system_prompt(ctx)
+        prompt = agent._build_system_prompt(ctx)
         assert "10 total" in prompt
         assert "50 total" in prompt
         assert "$12,345.50" in prompt or "$12345.50" in prompt
@@ -95,25 +95,24 @@ class TestAdminChatAgent:
         assert "82" in prompt
         assert "Q1 2026" in prompt
 
-    def test_build_system_prompt_empty(self):
+    def test_build_system_prompt_empty(self, agent):
         """_build_system_prompt returns the base instructions with no context."""
         ctx = ChatContext(conversation_id="t")
-        prompt = AdminChatAgent._build_system_prompt(ctx)
+        prompt = agent._build_system_prompt(ctx)
         assert "business intelligence assistant" in prompt.lower()
 
-    def test_build_system_prompt_unknown_record_type(self):
+    def test_build_system_prompt_unknown_record_type(self, agent):
         """_build_system_prompt ignores unknown record types gracefully."""
         ctx = ChatContext(
             conversation_id="t",
             product_catalog=[{"type": "unknown_type", "foo": "bar"}],
         )
-        prompt = AdminChatAgent._build_system_prompt(ctx)
-        # Should just return base instructions without crashing
+        prompt = agent._build_system_prompt(ctx)
         assert "business intelligence assistant" in prompt.lower()
 
     # ── New analytics record type tests ─────────────────────────────────────────
 
-    def test_build_system_prompt_product_performance(self):
+    def test_build_system_prompt_product_performance(self, agent):
         """product_performance record is formatted correctly."""
         ctx = ChatContext(
             conversation_id="t",
@@ -127,14 +126,14 @@ class TestAdminChatAgent:
                 ],
             }],
         )
-        prompt = AdminChatAgent._build_system_prompt(ctx)
+        prompt = agent._build_system_prompt(ctx)
         assert "42 total" in prompt
         assert "38 active" in prompt
         assert "electronics" in prompt
         assert "clothing" in prompt
         assert "59.99" in prompt or "5999" in prompt
 
-    def test_build_system_prompt_order_funnel(self):
+    def test_build_system_prompt_order_funnel(self, agent):
         """order_funnel record is formatted correctly."""
         ctx = ChatContext(
             conversation_id="t",
@@ -148,14 +147,14 @@ class TestAdminChatAgent:
                 ],
             }],
         )
-        prompt = AdminChatAgent._build_system_prompt(ctx)
+        prompt = agent._build_system_prompt(ctx)
         assert "paid" in prompt
         assert "120 orders" in prompt
         assert "pending" in prompt
         assert "refunded" in prompt
         assert "failed" in prompt
 
-    def test_build_system_prompt_revenue_trends(self):
+    def test_build_system_prompt_revenue_trends(self, agent):
         """revenue_trends record is formatted correctly with daily data."""
         ctx = ChatContext(
             conversation_id="t",
@@ -175,7 +174,7 @@ class TestAdminChatAgent:
                 ],
             }],
         )
-        prompt = AdminChatAgent._build_system_prompt(ctx)
+        prompt = agent._build_system_prompt(ctx)
         assert "$45,000.00" in prompt or "$45000.00" in prompt
         assert "300 orders" in prompt
         assert "$8,500.00" in prompt or "$8500.00" in prompt
@@ -184,7 +183,7 @@ class TestAdminChatAgent:
         assert "06-23" in prompt
         assert "06-24" in prompt
 
-    def test_build_system_prompt_traffic_sources(self):
+    def test_build_system_prompt_traffic_sources(self, agent):
         """traffic_sources record is formatted correctly."""
         ctx = ChatContext(
             conversation_id="t",
@@ -197,13 +196,13 @@ class TestAdminChatAgent:
                 ],
             }],
         )
-        prompt = AdminChatAgent._build_system_prompt(ctx)
+        prompt = agent._build_system_prompt(ctx)
         assert "organic_search" in prompt or "organic search" in prompt
         assert "12000 visits" in prompt
         assert "450 orders" in prompt
         assert "$45000.00" in prompt or "$45,000" in prompt
 
-    def test_build_system_prompt_campaign_performance(self):
+    def test_build_system_prompt_campaign_performance(self, agent):
         """campaign_performance record is formatted correctly."""
         ctx = ChatContext(
             conversation_id="t",
@@ -223,7 +222,7 @@ class TestAdminChatAgent:
                 ],
             }],
         )
-        prompt = AdminChatAgent._build_system_prompt(ctx)
+        prompt = agent._build_system_prompt(ctx)
         assert "Summer Sale" in prompt
         assert "google_ads" in prompt
         assert "$5,000.00" in prompt or "$5000.00" in prompt
@@ -231,7 +230,7 @@ class TestAdminChatAgent:
         assert "120 conversions" in prompt
         assert "3.00" in prompt or "ROAS" in prompt
 
-    def test_build_system_prompt_search_query_data(self):
+    def test_build_system_prompt_search_query_data(self, agent):
         """search_query_data record is formatted correctly."""
         ctx = ChatContext(
             conversation_id="t",
@@ -243,13 +242,13 @@ class TestAdminChatAgent:
                 ],
             }],
         )
-        prompt = AdminChatAgent._build_system_prompt(ctx)
+        prompt = agent._build_system_prompt(ctx)
         assert "wireless headphones" in prompt
         assert "8500 impressions" in prompt
         assert "680 clicks" in prompt
         assert "2.5" in prompt or "avg position" in prompt
 
-    def test_build_system_prompt_seo_rankings(self):
+    def test_build_system_prompt_seo_rankings(self, agent):
         """seo_rankings record is formatted correctly."""
         ctx = ChatContext(
             conversation_id="t",
@@ -261,13 +260,13 @@ class TestAdminChatAgent:
                 ],
             }],
         )
-        prompt = AdminChatAgent._build_system_prompt(ctx)
+        prompt = agent._build_system_prompt(ctx)
         assert "wireless headphones" in prompt
         assert "position 3" in prompt
         assert "/products/wireless-headphones" in prompt
         assert "2400" in prompt or "volume" in prompt
 
-    def test_build_system_prompt_top_products(self):
+    def test_build_system_prompt_top_products(self, agent):
         """top_products record is formatted correctly."""
         ctx = ChatContext(
             conversation_id="t",
@@ -279,12 +278,12 @@ class TestAdminChatAgent:
                 ],
             }],
         )
-        prompt = AdminChatAgent._build_system_prompt(ctx)
+        prompt = agent._build_system_prompt(ctx)
         assert "Wireless Headphones" in prompt
         assert "$4,500.00" in prompt or "$4500.00" in prompt
         assert "60 units" in prompt or "60)" in prompt
 
-    def test_build_system_prompt_all_new_record_types(self):
+    def test_build_system_prompt_all_new_record_types(self, agent):
         """All new analytics record types produce a coherent combined prompt."""
         ctx = ChatContext(
             conversation_id="t",
@@ -326,7 +325,7 @@ class TestAdminChatAgent:
                 },
             ],
         )
-        prompt = AdminChatAgent._build_system_prompt(ctx)
+        prompt = agent._build_system_prompt(ctx)
         assert "50 total" in prompt
         assert "paid" in prompt
         assert "$50,000" in prompt or "$50000.00" in prompt

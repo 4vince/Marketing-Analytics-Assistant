@@ -92,21 +92,80 @@ class ChatAgent(ABC):
 
     Subclasses override respond() and call self._chat_with_llm() instead of
     duplicating LLM calls and error handling.
+
+    Each ChatAgent has an AgentType that determines which skills are loaded
+    and which database credentials are used. Skills are loaded at init time
+    and stored in self.skills; they are never loaded lazily per-request.
     """
 
     max_retries: int = 2
 
-    def __init__(self):
+    def __init__(self, agent_type: "AgentType | None" = None):
+        """Initialize the agent with an optional AgentType for skill/credential scoping.
+
+        Args:
+            agent_type: Determines which skills directory to load and which
+                        DB role to use. If None, no skills are loaded (safe default
+                        for subclasses that don't need skills).
+        """
         try:
             from llm_client import LLMClient
             self.llm = LLMClient()
         except Exception as e:
-            print(f"[BaseAgent] LLM init failed: {type(e).__name__}: {e}")
+            print(f"[ChatAgent] LLM init failed: {type(e).__name__}: {e}")
             self.llm = None
+
+        # Load skills scoped to agent type — zero code path to other types' skills
+        self._agent_type = agent_type
+        self.skills: list[dict[str, Any]] = []
+        if agent_type is not None:
+            try:
+                from skills.loader import load_skills
+                self.skills = load_skills(agent_type)
+            except Exception as e:
+                print(f"[ChatAgent] Skills load failed: {type(e).__name__}: {e}")
 
     @abstractmethod
     async def respond(self, message: str, context: ChatContext) -> ChatResponse:
         ...
+
+    def get_skills_context(self) -> str:
+        """Render loaded skills as a system-prompt context block.
+
+        Returns an empty string if no skills are loaded. Skills are rendered
+        with their name as a header and their content body below, separated
+        by blank lines.
+        """
+        if not self.skills:
+            return ""
+
+        blocks: list[str] = []
+        for skill in self.skills:
+            name = skill.get("name", "Skill")
+            content = skill.get("content", "")
+            blocks.append(f"[Skill: {name}]\n{content}")
+
+        return "\n\n".join(blocks)
+
+    def _build_base_system_prompt(self, context: ChatContext) -> str:
+        """Build a system prompt that includes base instructions + loaded skills.
+
+        Subclasses should call this and then prepend/append their own
+        role-specific instructions.
+        """
+        parts = [self._get_role_instructions()]
+        skills_context = self.get_skills_context()
+        if skills_context:
+            parts.append(skills_context)
+        return "\n\n".join(parts)
+
+    @staticmethod
+    def _get_role_instructions() -> str:
+        """Return base role instructions shared by all chat agents.
+
+        Override in subclasses to provide agent-specific role context.
+        """
+        return "You are a helpful assistant."
 
     async def _chat_with_llm(self, system_prompt: str, user_message: str) -> ChatResponse:
         """Call the LLM with retry logic and return a ChatResponse.

@@ -1,13 +1,36 @@
 # FastAPI application entry point — defines routes for health check, chat, product analysis, and report generation.
 import os
+import logging
 from dotenv import load_dotenv
 load_dotenv()
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import WebSocket, WebSocketDisconnect
 
-app = FastAPI(title="AI Marketing Service")
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize and tear down the DatabasePool on app startup/shutdown."""
+    try:
+        from db import pool
+        logger.info("[startup] Initializing database connection pools...")
+        await pool.init()
+    except Exception as e:
+        logger.warning("[startup] Database pool init skipped: %s", e)
+    yield
+    try:
+        from db import pool
+        logger.info("[shutdown] Closing database connection pools...")
+        await pool.close()
+    except Exception as e:
+        logger.warning("[shutdown] Database pool close skipped: %s", e)
+
+
+app = FastAPI(title="AI Marketing Service", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
