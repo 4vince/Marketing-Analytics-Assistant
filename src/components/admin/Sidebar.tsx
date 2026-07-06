@@ -15,6 +15,11 @@ export default function Sidebar() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
+  const isActive = (href: string) =>
+    href === "/admin"
+      ? pathname === "/admin"
+      : pathname.startsWith(href);
+
   return (
     <>
       {/* Mobile toggle */}
@@ -60,35 +65,54 @@ export default function Sidebar() {
         </Link>
 
         {/* Navigation */}
-        <nav className="flex flex-col gap-1 flex-1">
+        <nav className="flex flex-col gap-0.5 flex-1">
           {links.map((link) => {
-            const active = pathname === link.href || (link.href !== "/admin" && pathname.startsWith(link.href));
+            const active = isActive(link.href);
             return (
               <Link
                 key={link.href}
                 href={link.href}
                 onClick={() => setOpen(false)}
-                className={`
-                  flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200
-                  ${active
-                    ? "bg-primary-500/10 text-primary-500 border border-primary-500/20"
-                    : "text-brand-muted hover:text-brand-warm-white hover:bg-brand-risen border border-transparent"
-                  }
-                `}
+                className="group relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200"
               >
-                <span className="text-base w-5 text-center">{link.icon}</span>
-                {link.label}
+                {/* Active left bar */}
+                <span
+                  className={`absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full transition-all duration-200 ${
+                    active
+                      ? "bg-primary-500 opacity-100"
+                      : "bg-transparent opacity-0 group-hover:opacity-40 group-hover:bg-brand-muted"
+                  }`}
+                />
+                <span
+                  className={`text-base w-5 text-center transition-colors duration-200 ${
+                    active ? "text-primary-500" : "text-brand-muted group-hover:text-brand-warm-white"
+                  }`}
+                >
+                  {link.icon}
+                </span>
+                <span
+                  className={`transition-colors duration-200 ${
+                    active
+                      ? "text-primary-500"
+                      : "text-brand-muted group-hover:text-brand-warm-white"
+                  }`}
+                >
+                  {link.label}
+                </span>
               </Link>
             );
           })}
         </nav>
 
+        {/* Divider */}
+        <div className="h-px bg-brand-fence/50 mt-auto mb-4" />
+
         {/* Back to store */}
         <Link
           href="/"
-          className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-brand-muted hover:text-brand-warm-white hover:bg-brand-risen transition-all duration-200 mt-4"
+          className="group flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-brand-muted hover:text-brand-warm-white hover:bg-brand-risen transition-all duration-200"
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <svg className="w-4 h-4 transition-transform duration-200 group-hover:-translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
           </svg>
           Storefront
