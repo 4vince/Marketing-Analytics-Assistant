@@ -111,6 +111,16 @@ async def generate_report(data: dict):
     return result.model_dump()
 
 
+@app.post("/analyze/audit")
+async def run_business_audit(data: dict):
+    try:
+        result = orchestrator.run_business_audit(data)
+        return result.model_dump()
+    except Exception as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -166,3 +166,28 @@ model SeoRanking {
 
   @@map("seo_rankings")
 }
+
+model Refund {
+  id        String   @id @default(cuid())
+  orderId   String   @map("order_id")
+  amount    Int
+  reason    String
+  status    String   @default("pending")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("refunds")
+}
+
+model Supplier {
+  id          String   @id @default(cuid())
+  name        String
+  contactInfo String?  @map("contact_info")
+  products    Json     @default("[]")
+  costMultiplier Float? @map("cost_multiplier")
+  leadTimeDays Int?     @map("lead_time_days")
+  reliability Float?   @default(1.0)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("suppliers")
+}

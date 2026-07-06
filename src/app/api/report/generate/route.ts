@@ -23,7 +23,7 @@ export async function POST() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ analyses }),
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(70000),
     });
   } catch {
     return NextResponse.json({ error: "AI service is unavailable. Please try again later." }, { status: 503 });

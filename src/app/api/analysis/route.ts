@@ -15,11 +15,17 @@ export async function POST(req: Request) {
   const product = await prisma.product.findUnique({ where: { id: productId } });
   if (!product) return NextResponse.json({ error: "Product not found" }, { status: 404 });
 
-  const aiRes = await fetch(`${AI_SERVICE}/analyze/product`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(product),
-  });
+  let aiRes: Response;
+  try {
+    aiRes = await fetch(`${AI_SERVICE}/analyze/product`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(product),
+      signal: AbortSignal.timeout(70000),
+    });
+  } catch {
+    return NextResponse.json({ error: "AI service is unavailable. Please try again later." }, { status: 503 });
+  }
 
   if (!aiRes.ok) return NextResponse.json({ error: "AI service error" }, { status: 502 });
 

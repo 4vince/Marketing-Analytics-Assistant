@@ -31,7 +31,7 @@ class BaseAgent(ABC):
     duplicating LLM calls, error handling, and JSON decoding.
     """
 
-    max_retries: int = 2
+    max_retries: int = 0
 
     def __init__(self):
         try:

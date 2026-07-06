@@ -66,6 +66,7 @@ class LLMClient:
                     {"role": "user", "content": user},
                 ],
                 temperature=0.3,
+                timeout=60,
             )
             return resp.choices[0].message.content or ""
         else:  # anthropic
@@ -74,6 +75,7 @@ class LLMClient:
                 system=system,
                 messages=[{"role": "user", "content": user}],
                 temperature=0.3,
+                timeout=60,
             )
             return resp.content[0].text if resp.content else ""
 
