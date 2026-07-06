@@ -100,20 +100,89 @@ export default async function MarketingPage() {
 
                   {productResults.length > 0 && (
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      {productResults.slice(0, 3).map((r) => (
-                        <div key={r.id} className="bg-brand-risen/60 border border-brand-fence/60 rounded-lg p-4 transition-all duration-200 hover:bg-brand-risen hover:border-brand-fence">
-                          <p className="text-[10px] font-medium text-brand-muted uppercase tracking-widest">{r.agentType}</p>
-                          <p className="text-xl font-display font-semibold text-brand-warm-white mt-1.5 tabular-nums">{r.score}/100</p>
-                          <ul className="mt-3 space-y-1">
-                            {(r.findings as Array<{ issue: string; severity: string }>).slice(0, 2).map((f, i) => (
-                              <li key={i} className="text-xs text-brand-muted flex items-start gap-1.5">
-                                <span className="mt-0.5 text-[10px] text-brand-fence">—</span>
-                                {f.issue}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      ))}
+                      {productResults.slice(0, 3).map((r) => {
+                        const findings = r.findings as Array<{ issue: string; severity: string; confidence?: string; dimension?: string }>;
+                        const suggestions = r.suggestions as Array<{ area: string; suggestion: string; impact?: string; effort?: string }>;
+                        const isSEO = r.agentType === "seo";
+
+                        return (
+                          <div key={r.id} className="bg-brand-risen/60 border border-brand-fence/60 rounded-lg p-4 transition-all duration-200 hover:bg-brand-risen hover:border-brand-fence">
+                            <p className="text-[10px] font-medium text-brand-muted uppercase tracking-widest">{r.agentType}</p>
+                            <p className="text-xl font-display font-semibold text-brand-warm-white mt-1.5 tabular-nums">{r.score}/100</p>
+
+                            {/* Findings */}
+                            {findings.length > 0 && (
+                              <ul className="mt-3 space-y-1.5">
+                                {findings.slice(0, 2).map((f, i) => (
+                                  <li key={i} className="text-xs text-brand-muted">
+                                    <div className="flex items-start gap-1.5">
+                                      <span className="mt-0.5 text-[10px] text-brand-fence shrink-0">—</span>
+                                      <span className="leading-relaxed">{f.issue}</span>
+                                    </div>
+                                    {isSEO && f.confidence && (
+                                      <div className="flex gap-1.5 mt-1 ml-3.5">
+                                        <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${
+                                          f.confidence === "Confirmed"
+                                            ? "bg-emerald-500/10 text-emerald-400"
+                                            : f.confidence === "Likely"
+                                            ? "bg-brand-yolk/10 text-brand-yolk"
+                                            : "bg-brand-fence/30 text-brand-muted"
+                                        }`}>
+                                          {f.confidence}
+                                        </span>
+                                        {f.dimension && (
+                                          <span className="text-[9px] text-brand-muted/60 bg-brand-fence/20 px-1.5 py-0.5 rounded">
+                                            {f.dimension.replace(/_/g, " ")}
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+
+                            {/* Suggestions */}
+                            {isSEO && suggestions.length > 0 && (
+                              <details className="mt-3 group">
+                                <summary className="text-[10px] text-primary-500/70 hover:text-primary-500 cursor-pointer font-medium transition-colors">
+                                  {suggestions.length} suggestion{suggestions.length !== 1 ? "s" : ""}
+                                </summary>
+                                <ul className="mt-2 space-y-1.5">
+                                  {suggestions.slice(0, 3).map((s, i) => (
+                                    <li key={i} className="text-[11px] text-brand-muted leading-relaxed">
+                                      <span className="text-brand-fence">→ </span>
+                                      {s.suggestion}
+                                      {s.impact && s.effort && (
+                                        <span className="flex gap-1 mt-0.5">
+                                          <span className={`text-[9px] font-medium px-1 py-0.5 rounded ${
+                                            s.impact === "high"
+                                              ? "bg-emerald-500/10 text-emerald-400"
+                                              : s.impact === "medium"
+                                              ? "bg-brand-yolk/10 text-brand-yolk"
+                                              : "bg-brand-fence/30 text-brand-muted"
+                                          }`}>
+                                            impact: {s.impact}
+                                          </span>
+                                          <span className={`text-[9px] font-medium px-1 py-0.5 rounded ${
+                                            s.effort === "low"
+                                              ? "bg-emerald-500/10 text-emerald-400"
+                                              : s.effort === "medium"
+                                              ? "bg-brand-yolk/10 text-brand-yolk"
+                                              : "bg-brand-fence/30 text-brand-muted"
+                                          }`}>
+                                            effort: {s.effort}
+                                          </span>
+                                        </span>
+                                      )}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </details>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
