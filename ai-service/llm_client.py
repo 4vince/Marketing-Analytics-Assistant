@@ -57,10 +57,11 @@ class LLMClient:
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
 
-    def chat(self, system: str, user: str) -> str:
+    def chat(self, system: str, user: str, model: str | None = None) -> str:
+        effective_model = model or self.model
         if self.provider in ("opencode", "openai", "openrouter"):
             resp = self.client.chat.completions.create(
-                model=self.model,
+                model=effective_model,
                 messages=[
                     {"role": "system", "content": system},
                     {"role": "user", "content": user},
@@ -71,7 +72,7 @@ class LLMClient:
             return resp.choices[0].message.content or ""
         else:  # anthropic
             resp = self.client.messages.create(
-                model=self.model,
+                model=effective_model,
                 system=system,
                 messages=[{"role": "user", "content": user}],
                 temperature=0.3,
@@ -79,6 +80,6 @@ class LLMClient:
             )
             return resp.content[0].text if resp.content else ""
 
-    async def chat_async(self, system: str, user: str) -> str:
+    async def chat_async(self, system: str, user: str, model: str | None = None) -> str:
         """Async version of chat() — runs the synchronous call in a thread pool."""
-        return await asyncio.to_thread(self.chat, system, user)
+        return await asyncio.to_thread(self.chat, system, user, model)

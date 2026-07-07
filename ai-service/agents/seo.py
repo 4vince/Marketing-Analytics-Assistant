@@ -33,6 +33,8 @@ PRODUCT_SCHEMA_TEMPLATE = """
 class SEOAgent(BaseAgent):
     """Evaluates product page SEO across 9 weighted dimensions with evidence-backed findings."""
 
+    use_complex_model = True
+
     SCORING_WEIGHTS = """
     Scoring weights (each dimension 0-100, weighted average for final score):
     - Title Tag (20%): length (50-60 chars recommended), keyword placement,

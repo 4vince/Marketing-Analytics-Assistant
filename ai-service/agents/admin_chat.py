@@ -22,6 +22,8 @@ class AdminChatAgent(ChatAgent):
     sanitized before prompt assembly.
     """
 
+    use_complex_model = True
+
     def __init__(self):
         super().__init__(agent_type=AgentType.ADMIN)
 

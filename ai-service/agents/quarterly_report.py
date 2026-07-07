@@ -1,5 +1,6 @@
 # Quarterly report generation agent — analyzes results from the last 90 days and produces a summary report.
 import json
+import os
 
 from .base import BaseAgent, AnalysisResult
 from llm_client import LLMClient
@@ -7,6 +8,7 @@ from llm_client import LLMClient
 
 class QuarterlyReportAgent(BaseAgent):
     def __init__(self):
+        self.use_complex_model = True
         try:
             self.llm = LLMClient()
         except Exception:
@@ -20,6 +22,7 @@ class QuarterlyReportAgent(BaseAgent):
                     findings=[{"issue": "Analysis unavailable", "severity": "high", "detail": "LLM analysis failed to return valid results. Check API keys and network connectivity."}],
                     suggestions=[]
                 )
+            model = os.getenv("LLM_MODEL_COMPLEX") or os.getenv("LLM_MODEL")
             analyses = content.get("analyses", [])
             summary = f"""
 Analyze these {len(analyses)} product analyses from the last quarter:
@@ -34,7 +37,7 @@ Produce a report with:
 
 Return JSON: {{"score": int, "findings": [{{"issue": str, "severity": str, "detail": str, "count": int}}], "suggestions": [{{"area": str, "suggestion": str, "effort": "low"/"medium"/"high"}}]}}
 """
-            result = self.llm.chat("You are an expert e-commerce strategy analyst.", summary)
+            result = self.llm.chat("You are an expert e-commerce strategy analyst.", summary, model=model)
 
             data = json.loads(result)
             return AnalysisResult(**data)

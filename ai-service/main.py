@@ -2,7 +2,7 @@
 import os
 import logging
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI

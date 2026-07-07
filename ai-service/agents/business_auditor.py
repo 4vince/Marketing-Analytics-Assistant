@@ -172,6 +172,8 @@ class BusinessAuditorAgent(BaseAgent):
     """Aggregates data from four sub-analyzers and runs LLM analysis to
     identify hidden profit leaks with estimated dollar impact."""
 
+    use_complex_model = True
+
     def analyze(self, content: dict) -> AnalysisResult:
         # Run sub-analyzers in sequence (they're pure data transforms, no I/O)
         sales_data = analyze_sales(content)

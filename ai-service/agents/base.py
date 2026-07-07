@@ -1,5 +1,6 @@
 # Abstract base classes and Pydantic models for analysis results, chat context, and agents.
 import json
+import os
 
 from pydantic import BaseModel
 from abc import ABC, abstractmethod
@@ -29,9 +30,13 @@ class BaseAgent(ABC):
 
     Subclasses override analyze() and call self._run_llm_analysis() instead of
     duplicating LLM calls, error handling, and JSON decoding.
+
+    Set use_complex_model = True in subclasses to route to the powerful model
+    (LLM_MODEL_COMPLEX env var) instead of the default fast model (LLM_MODEL).
     """
 
     max_retries: int = 0
+    use_complex_model: bool = False
 
     def __init__(self):
         try:
@@ -43,6 +48,16 @@ class BaseAgent(ABC):
     @abstractmethod
     def analyze(self, content: dict) -> AnalysisResult:
         ...
+
+    def _get_model(self) -> str | None:
+        """Resolve which model this agent should use.
+
+        Returns the complex model slug if use_complex_model is True,
+        otherwise None (let the LLMClient use its default).
+        """
+        if self.use_complex_model:
+            return os.getenv("LLM_MODEL_COMPLEX") or os.getenv("LLM_MODEL")
+        return None
 
     def _run_llm_analysis(self, system_prompt: str, user_prompt: str) -> AnalysisResult:
         """Call the LLM with retry logic, parse JSON, and return an AnalysisResult.
@@ -56,9 +71,10 @@ class BaseAgent(ABC):
             )
 
         last_error: str | None = None
+        model = self._get_model()
         for _ in range(self.max_retries + 1):
             try:
-                raw = self.llm.chat(system_prompt, user_prompt)
+                raw = self.llm.chat(system_prompt, user_prompt, model=model)
                 data = json.loads(raw)
 
                 # Validate required fields exist with correct types
@@ -97,9 +113,13 @@ class ChatAgent(ABC):
     Each ChatAgent has an AgentType that determines which skills are loaded
     and which database credentials are used. Skills are loaded at init time
     and stored in self.skills; they are never loaded lazily per-request.
+
+    Set use_complex_model = True in subclasses to route to the powerful model
+    (LLM_MODEL_COMPLEX env var) instead of the default fast model (LLM_MODEL).
     """
 
     max_retries: int = 2
+    use_complex_model: bool = False
 
     def __init__(self, agent_type: "AgentType | None" = None):
         """Initialize the agent with an optional AgentType for skill/credential scoping.
@@ -168,6 +188,16 @@ class ChatAgent(ABC):
         """
         return "You are a helpful assistant."
 
+    def _get_model(self) -> str | None:
+        """Resolve which model this agent should use.
+
+        Returns the complex model slug if use_complex_model is True,
+        otherwise None (let the LLMClient use its default).
+        """
+        if self.use_complex_model:
+            return os.getenv("LLM_MODEL_COMPLEX") or os.getenv("LLM_MODEL")
+        return None
+
     async def _chat_with_llm(self, system_prompt: str, user_message: str) -> ChatResponse:
         """Call the LLM with retry logic and return a ChatResponse.
 
@@ -179,9 +209,10 @@ class ChatAgent(ABC):
                 "Chat service is currently unavailable. Please try again later."
             )
 
+        model = self._get_model()
         for attempt in range(self.max_retries + 1):
             try:
-                result = await self.llm.chat_async(system_prompt, user_message)
+                result = await self.llm.chat_async(system_prompt, user_message, model=model)
                 return ChatResponse(message=result)
             except Exception as e:
                 print(f"[ChatAgent] LLM attempt {attempt + 1}/{self.max_retries + 1} failed: {type(e).__name__}: {e}")
