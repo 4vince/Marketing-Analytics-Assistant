@@ -1,9 +1,9 @@
-// Product analysis API — POST triggers AI analysis for a product; GET returns results (optionally filtered).
+// Product analysis API — POST triggers AI analysis for a product (returns job_id for polling);
+// GET returns analysis results (optionally filtered by productId).
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import type { Prisma } from "@prisma/client";
 
 const AI_SERVICE = process.env.AI_SERVICE_URL || "http://localhost:8000";
 
@@ -15,35 +15,27 @@ export async function POST(req: Request) {
   const product = await prisma.product.findUnique({ where: { id: productId } });
   if (!product) return NextResponse.json({ error: "Product not found" }, { status: 404 });
 
+  // Submit job to AI service — returns { job_id } immediately
   let aiRes: Response;
   try {
     aiRes = await fetch(`${AI_SERVICE}/analyze/product`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(product),
-      signal: AbortSignal.timeout(70000),
+      signal: AbortSignal.timeout(10000),
     });
   } catch {
     return NextResponse.json({ error: "AI service is unavailable. Please try again later." }, { status: 503 });
   }
 
-  if (!aiRes.ok) return NextResponse.json({ error: "AI service error" }, { status: 502 });
-
-  const results = await aiRes.json();
-
-  for (const [agentType, result] of Object.entries(results)) {
-    await prisma.analysisResult.create({
-      data: {
-        productId: product.id,
-        agentType,
-        score: (result as { score: number }).score,
-        findings: (result as { findings: Prisma.InputJsonValue }).findings,
-        suggestions: (result as { suggestions: Prisma.InputJsonValue }).suggestions,
-      },
-    });
+  if (!aiRes.ok) {
+    const errBody = await aiRes.text();
+    return NextResponse.json({ error: `AI service error: ${errBody}` }, { status: 502 });
   }
 
-  return NextResponse.json(results);
+  const { job_id } = await aiRes.json();
+
+  return NextResponse.json({ jobId: job_id, productId: product.id });
 }
 
 export async function GET(req: Request) {

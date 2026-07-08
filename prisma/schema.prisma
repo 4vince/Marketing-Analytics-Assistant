@@ -68,6 +68,34 @@ model AnalysisResult {
   @@map("analysis_results")
 }
 
+model Competitor {
+  id        String   @id @default(cuid())
+  name      String
+  domain    String?
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  analyses CompetitorAnalysis[]
+
+  @@map("competitors")
+}
+
+model CompetitorAnalysis {
+  id             String   @id @default(cuid())
+  competitorId   String   @map("competitor_id")
+  overallScore   Int
+  summary        String   @default("")
+  markdownReport String   @default("")    @map("markdown_report")
+  findings       Json     @default("[]")
+  suggestions    Json     @default("[]")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  competitor Competitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+
+  @@map("competitor_analyses")
+}
+
 model QuarterlyReport {
   id           String   @id @default(cuid())
   periodStart  DateTime @map("period_start")
