@@ -1,5 +1,6 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
+import FormattedText from "@/components/ui/FormattedText";
 
 interface Message {
   role: "user" | "agent";
@@ -66,7 +67,7 @@ export default function AdminChatPage() {
                     : "bg-brand-risen text-brand-warm-white rounded-bl-md border border-brand-fence"
                 }`}
               >
-                {msg.content}
+                {msg.role === "agent" ? <FormattedText text={msg.content} /> : msg.content}
               </div>
             </div>
           ))}

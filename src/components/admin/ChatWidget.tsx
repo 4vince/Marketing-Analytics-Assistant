@@ -1,6 +1,7 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import FormattedText from "@/components/ui/FormattedText";
 
 interface Message {
   role: "user" | "agent";
@@ -75,15 +76,15 @@ export default function AdminChatWidget() {
           <div className="flex-1 overflow-y-auto p-4 space-y-3 max-h-72" style={{ scrollbarWidth: "thin" }}>
             {messages.map((msg, i) => (
               <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                <span
+                <div
                   className={`max-w-[80%] px-3.5 py-2.5 text-sm leading-relaxed rounded-2xl ${
                     msg.role === "user"
                       ? "bg-primary-500 text-brand-warm-white rounded-br-md"
                       : "bg-brand-risen text-brand-warm-white rounded-bl-md border border-brand-fence"
                   }`}
                 >
-                  {msg.content}
-                </span>
+                  {msg.role === "agent" ? <FormattedText text={msg.content} /> : msg.content}
+                </div>
               </div>
             ))}
             {loading && (
