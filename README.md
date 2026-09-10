@@ -443,6 +443,31 @@ npm run dev
 
 App runs at `http://localhost:3000`.
 
+### Admin Dashboard Access
+
+1. Navigate to **http://localhost:3000/admin**
+2. If you're not signed in, you'll be redirected to **http://localhost:3000/auth/signin**
+3. Log in with the seeded admin credentials:
+
+| Field | Value |
+|-------|-------|
+| **Email** | `admin@store.com` |
+| **Password** | `admin123` |
+
+The admin dashboard includes:
+
+| Area | Path |
+|------|------|
+| Overview / stats | `/admin` |
+| Products | `/admin/products` |
+| Orders | `/admin/orders` |
+| Marketing Intelligence (AI analysis, quarterly reports) | `/admin/marketing` |
+| Competitor Intelligence (web scraping + SWOT) | `/admin/competitors` |
+| Business Auditor (profit-leak detection) | `/admin/audit` |
+| Admin chat assistant | `/admin/chat` (also available as a bottom-right widget on every admin page) |
+
+> ⚠️ **Change the default password after first login.** Anyone with the seeded credentials can access the dashboard since it's protected only by NextAuth sessions (no email verification).
+
 ### 6. Start the AI service
 
 ```bash
