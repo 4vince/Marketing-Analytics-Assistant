@@ -17,11 +17,7 @@ class QuarterlyReportAgent(BaseAgent):
     def analyze(self, content: dict) -> AnalysisResult:
         try:
             if self.llm is None:
-                return AnalysisResult(
-                    score=0,
-                    findings=[{"issue": "Analysis unavailable", "severity": "high", "detail": "LLM analysis failed to return valid results. Check API keys and network connectivity."}],
-                    suggestions=[]
-                )
+                return self._fallback_result("LLM analysis failed to return valid results. Check API keys and network connectivity.")
             model = os.getenv("LLM_MODEL_COMPLEX") or os.getenv("LLM_MODEL")
             analyses = content.get("analyses", [])
             summary = f"""
@@ -38,12 +34,6 @@ Produce a report with:
 Return JSON: {{"score": int, "findings": [{{"issue": str, "severity": str, "detail": str, "count": int}}], "suggestions": [{{"area": str, "suggestion": str, "effort": "low"/"medium"/"high"}}]}}
 """
             result = self.llm.chat("You are an expert e-commerce strategy analyst.", summary, model=model)
-
-            data = json.loads(result)
-            return AnalysisResult(**data)
-        except json.JSONDecodeError:
-            return AnalysisResult(
-                score=0,
-                findings=[{"issue": "Analysis unavailable", "severity": "high", "detail": "LLM analysis failed to return valid results. Check API keys and network connectivity."}],
-                suggestions=[]
-            )
+            return self._build_result(json.loads(result))
+        except (json.JSONDecodeError, ValueError, TypeError):
+            return self._fallback_result("LLM analysis failed to return valid results. Check API keys and network connectivity.")

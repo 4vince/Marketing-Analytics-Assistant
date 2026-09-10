@@ -53,7 +53,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 function formatMoney(cents: number): string {
   const abs = Math.abs(cents);
-  if (abs >= 1_000_000) return `$${(cents / 100_000_0).toFixed(1)}k`;
+  if (abs >= 1_000_000) return `$${(cents / 100_000).toFixed(1)}k`;
   if (abs >= 100_000) return `$${(cents / 100).toLocaleString()}`;
   return `$${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
@@ -125,7 +125,10 @@ export default function AuditPage() {
     : [];
 
   const totalAnnualLoss = result
-    ? result.findings.reduce((s, f) => s + f.estimated_annual_loss_cents, 0)
+    ? result.findings.reduce(
+        (s, f) => s + (typeof f.estimated_annual_loss_cents === "number" ? f.estimated_annual_loss_cents : 0),
+        0
+      )
     : 0;
 
   return (
@@ -281,7 +284,7 @@ export default function AuditPage() {
                                 {f.detail}
                               </p>
                               <p className="text-red-400 font-medium tabular-nums">
-                                {formatMoney(f.estimated_annual_loss_cents)} /yr
+                                {formatMoney(typeof f.estimated_annual_loss_cents === "number" ? f.estimated_annual_loss_cents : 0)} /yr
                               </p>
                             </div>
                           </div>
@@ -341,7 +344,7 @@ export default function AuditPage() {
                           {s.suggestion}
                         </p>
                         <p className="text-xs text-emerald-400 font-medium mt-1.5 tabular-nums">
-                          Expected savings: {formatMoney(s.expected_savings_cents)} /yr
+                          Expected savings: {formatMoney(typeof s.expected_savings_cents === "number" ? s.expected_savings_cents : 0)} /yr
                         </p>
                       </div>
                     </div>

@@ -71,7 +71,7 @@ export async function GET(req: Request) {
   if ((job.status === "completed" || job.status === "partial") && job.result && productId) {
     for (const [agentType, result] of Object.entries(job.result)) {
       const r = result as AgentResult;
-      if (!r || !r.score || !Array.isArray(r.findings)) continue;
+      if (!r || typeof r.score !== "number" || !Array.isArray(r.findings)) continue;
 
       try {
         await prisma.analysisResult.create({

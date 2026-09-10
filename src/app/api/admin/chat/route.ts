@@ -10,6 +10,18 @@ const THIRTY_DAYS = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 const SEVEN_DAYS = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 const SIXTY_DAYS = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
 
+// Run one analytics query and fall back to `fallback` on failure so a single
+// unseeded/missing table (e.g. seo_rankings) can't disable the whole chat.
+async function safe<T>(name: string, fn: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error(`[admin-chat] "${name}" query failed:`, detail);
+    return fallback;
+  }
+}
+
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -17,7 +29,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
 
-    // ── Run all analytics queries in parallel ──────────────────────────────────
+    // ── Run all analytics queries in parallel, isolating failures per query ──
     const [
       productData,
       orderFunnel,
@@ -33,7 +45,7 @@ export async function POST(req: Request) {
       reports,
     ] = await Promise.all([
       // Products: count + category breakdown
-      (async () => {
+      safe("products", async () => {
         const [total, active, categories] = await Promise.all([
           prisma.product.count(),
           prisma.product.count({ where: { status: "active" } }),
@@ -48,82 +60,82 @@ export async function POST(req: Request) {
           count: c._count,
           avgPrice: c._avg.price ? Math.round(c._avg.price / 100) : 0,
         }))};
-      })(),
+      }, { total: 0, active: 0, categories: [] }),
 
       // Order funnel: count + revenue by status
-      prisma.order.groupBy({
+      safe("order_funnel", () => prisma.order.groupBy({
         by: ["status"],
         _count: true,
         _sum: { total: true },
-      }),
+      }), []),
 
       // Orders in last 30 days (for revenue trends)
-      prisma.order.findMany({
+      safe("orders_last_30", () => prisma.order.findMany({
         where: { createdAt: { gte: THIRTY_DAYS } },
         select: { total: true, createdAt: true, status: true },
-      }),
+      }), []),
 
       // Orders in last 7 days
-      prisma.order.findMany({
+      safe("orders_last_7", () => prisma.order.findMany({
         where: { createdAt: { gte: SEVEN_DAYS } },
         select: { total: true, status: true },
-      }),
+      }), []),
 
       // Recent orders (last 5)
-      prisma.order.findMany({ take: 5, orderBy: { createdAt: "desc" } }),
+      safe("recent_orders", () => prisma.order.findMany({ take: 5, orderBy: { createdAt: "desc" } }), []),
 
       // Product analysis scores
-      prisma.product.findMany({
+      safe("product_analysis", () => prisma.product.findMany({
         where: { status: "active" },
         include: {
           analysisResults: { orderBy: { createdAt: "desc" }, take: 4 },
         },
-      }),
+      }), []),
 
       // Traffic sources (last 30 days aggregated by source)
-      prisma.trafficSource.groupBy({
+      safe("traffic_sources", () => prisma.trafficSource.groupBy({
         by: ["source"],
         _sum: { visits: true, orders: true, revenue: true },
         where: { date: { gte: THIRTY_DAYS } },
-      }),
+      }), []),
 
       // Campaigns (last 30 days, aggregated by campaign)
-      prisma.campaign.groupBy({
+      safe("campaigns", () => prisma.campaign.groupBy({
         by: ["name", "channel"],
         _sum: { spend: true, impressions: true, clicks: true, conversions: true, revenue: true },
         where: { date: { gte: THIRTY_DAYS } },
-      }),
+      }), []),
 
       // Search queries (top 15 by impressions in last 30 days)
-      prisma.searchQueryData.groupBy({
+      safe("search_queries", () => prisma.searchQueryData.groupBy({
         by: ["query"],
         _sum: { impressions: true, clicks: true },
         _avg: { avgPosition: true },
         where: { date: { gte: THIRTY_DAYS } },
         orderBy: { _sum: { impressions: "desc" } },
         take: 15,
-      }),
+      }), []),
 
       // SEO rankings (latest position per keyword)
-      prisma.$queryRawUnsafe<Array<{ keyword: string; page: string; position: number; search_volume: number | null }>>(`
+      safe("seo_rankings", () => prisma.$queryRawUnsafe<Array<{ keyword: string; page: string; position: number; search_volume: number | null }>>(`
         SELECT DISTINCT ON (keyword) keyword, page, position, search_volume
         FROM seo_rankings
         ORDER BY keyword, date DESC
-      `),
+      `), []),
 
       // Analysis results summary
-      prisma.analysisResult.groupBy({
+      safe("analysis_results", () => prisma.analysisResult.groupBy({
         by: ["agentType"],
         _avg: { score: true },
         _count: true,
-      }),
+      }), []),
 
       // Quarterly reports
-      prisma.quarterlyReport.findMany({ take: 3, orderBy: { createdAt: "desc" } }),
+      safe("quarterly_reports", () => prisma.quarterlyReport.findMany({ take: 3, orderBy: { createdAt: "desc" } }), []),
     ]);
 
     // ── Compute derived analytics ──────────────────────────────────────────────
-    const allOrders = await prisma.order.findMany({ select: { total: true } });
+    const allOrders = await safe("all_orders", () => prisma.order.findMany({ select: { total: true } }), []);
     const totalRevenue = allOrders.reduce((sum, o) => sum + o.total, 0);
     const totalOrderCount = allOrders.length;
 
@@ -305,10 +317,12 @@ export async function POST(req: Request) {
     const data = await aiRes.json();
     return NextResponse.json(data);
   } catch (err) {
-    console.error("Admin chat error:", err);
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error("Admin chat error:", detail);
     return NextResponse.json({
       message:
         "I'm sorry, the analytics assistant is currently unavailable. Please check back later or check the dashboard directly.",
+      detail,
     });
   }
 }

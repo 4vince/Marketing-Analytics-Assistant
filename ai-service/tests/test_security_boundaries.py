@@ -3,7 +3,7 @@
 # as a boundary, not as a feature: they assert what agents CANNOT do, not
 # just what they CAN do.
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, AsyncMock
 
 sys.path.insert(0, ".")
 import pytest
@@ -255,7 +255,8 @@ class TestPrivilegeEscalation:
         assert hasattr(agent, "_agent_type")
         assert agent._agent_type == AgentType.ADMIN
 
-    def test_storefront_responds_gracefully_to_admin_data(self):
+    @pytest.mark.asyncio
+    async def test_storefront_responds_gracefully_to_admin_data(self):
         """Storefront agent doesn't crash when given admin-style context."""
         agent = StorefrontChatAgent()
         ctx = ChatContext(
@@ -268,9 +269,9 @@ class TestPrivilegeEscalation:
         # This should not crash — the storefront agent just uses
         # the product catalog data it was given (it's not designed
         # to parse admin context types, but it shouldn't fail)
-        with patch.object(agent, '_chat_with_llm') as mock_chat:
+        with patch.object(agent, '_chat_with_llm', new_callable=AsyncMock) as mock_chat:
             mock_chat.return_value = type("resp", (), {"message": "Hi there!"})()
-            resp = agent.respond("Hello", ctx)
+            resp = await agent.respond("Hello", ctx)
             # Verify the storefront's own prompt builder was used
             system = agent._build_system_prompt(ctx.product_catalog)
             assert "You are a helpful e-commerce assistant" in system

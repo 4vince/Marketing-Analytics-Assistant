@@ -435,6 +435,8 @@ npm run db:seed
 
 Seeds an admin user (`admin@store.com` / `admin123`) and sample products.
 
+> **Scoped database roles** (`storefront_user`, `admin_user`) and views (`active_products_v`, `admin_analytics_v`) are used by the AI chat agents. They are **provisioned automatically when the AI service starts** (using `DATABASE_URL`). For `prisma migrate deploy` users they're also available as an idempotent migration at `prisma/migrations/20260702000001_scoped_roles/migration.sql`.
+
 ### 5. Start the frontend
 
 ```bash
@@ -486,6 +488,9 @@ Edit `ai-service/.env`:
 | `ANTHROPIC_API_KEY` | Required if using Anthropic |
 | `OPENCODE_API_KEY` | Required if using OpenCode |
 | `OPENROUTER_API_KEY` | Required if using OpenRouter |
+| `DATABASE_URL` | App DB (used to provision scoped roles/views at startup) |
+| `DATABASE_URL_STOREFRONT` | Scoped read-only storefront role (`storefront_user`/`storefront_dev_only`) |
+| `DATABASE_URL_ADMIN` | Scoped read-only admin role (`admin_user`/`admin_dev_only`) |
 
 ```bash
 pip install -r requirements.txt

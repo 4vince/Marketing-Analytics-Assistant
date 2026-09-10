@@ -14,6 +14,12 @@ logger = logging.getLogger(__name__)
 MAX_RETRIES = 3
 RETRY_BACKOFF = [1, 3, 8]  # seconds between retries
 
+# Per-attempt HTTP timeout and hard wall-clock budget for chat() so a
+# dead/slow model (e.g. a flaky :free endpoint) fails fast with a fallback
+# instead of hanging minutes past the frontend's own abort timeout.
+REQUEST_TIMEOUT = 60  # seconds per single API call
+TOTAL_TIME_BUDGET = 120  # seconds for the entire chat() call (all retries)
+
 
 class LLMClient:
     def __init__(self):
@@ -74,8 +80,13 @@ class LLMClient:
         """
         effective_model = model or self.model
         last_error = None
+        started = time.monotonic()
 
         for attempt in range(MAX_RETRIES):
+            if time.monotonic() - started > TOTAL_TIME_BUDGET:
+                last_error = f"exceeded total time budget of {TOTAL_TIME_BUDGET}s"
+                logger.error("[LLMClient] %s — giving up after %d attempts", last_error, attempt)
+                break
             try:
                 result = self._call_llm(system, user, effective_model)
                 if result is not None:
@@ -139,7 +150,7 @@ class LLMClient:
                     {"role": "user", "content": user},
                 ],
                 temperature=0.3,
-                timeout=120,
+                timeout=REQUEST_TIMEOUT,
             )
 
             # Validate response structure
@@ -185,7 +196,7 @@ class LLMClient:
                 system=system,
                 messages=[{"role": "user", "content": user}],
                 temperature=0.3,
-                timeout=120,
+                timeout=REQUEST_TIMEOUT,
             )
 
             if resp is None or not resp.content:

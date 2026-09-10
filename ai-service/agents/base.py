@@ -2,12 +2,14 @@
 import json
 import os
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from abc import ABC, abstractmethod
 from typing import Any
 
 
 class AnalysisResult(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     score: int
     findings: list[dict[str, Any]]
     suggestions: list[dict[str, Any]]
@@ -78,17 +80,7 @@ class BaseAgent(ABC):
         for attempt in range(self.max_retries + 1):
             try:
                 raw = self.llm.chat(system_prompt, user_prompt, model=model)
-                data = json.loads(raw)
-
-                # Validate required fields exist with correct types
-                score = data.get("score")
-                findings = data.get("findings")
-                suggestions = data.get("suggestions")
-                if not isinstance(score, int) or not isinstance(findings, list) or not isinstance(suggestions, list):
-                    raise ValueError(f"Invalid response structure: score={type(score).__name__}, "
-                                     f"findings={type(findings).__name__}, suggestions={type(suggestions).__name__}")
-
-                return AnalysisResult(score=score, findings=findings, suggestions=suggestions)
+                return self._build_result(json.loads(raw))
             except RuntimeError as e:
                 # LLMClient exhausted all retries — don't retry at agent level
                 last_error = str(e)
@@ -102,11 +94,43 @@ class BaseAgent(ABC):
         )
 
     @staticmethod
+    def _build_result(data: Any) -> AnalysisResult:
+        """Build an AnalysisResult from arbitrary LLM JSON output.
+
+        Coerces integer-valued floats to int, tolerates extra top-level keys
+        (defaults to the schema fields), and raises ValueError on a
+        structurally invalid response.
+        """
+        if not isinstance(data, dict):
+            raise ValueError(f"Expected JSON object, got {type(data).__name__}")
+        score = data.get("score")
+        if isinstance(score, float) and score.is_integer():
+            score = int(score)
+        findings = data.get("findings")
+        suggestions = data.get("suggestions")
+        if not isinstance(score, int) or not isinstance(findings, list) or not isinstance(suggestions, list):
+            raise ValueError(
+                f"Invalid response structure: score={type(score).__name__}, "
+                f"findings={type(findings).__name__}, suggestions={type(suggestions).__name__}"
+            )
+        return AnalysisResult(score=score, findings=findings, suggestions=suggestions)
+
+    @staticmethod
     def _fallback_result(detail: str = "Analysis unavailable") -> AnalysisResult:
-        """Return a uniform error result when analysis cannot be completed."""
+        """Return a uniform error result when analysis cannot be completed.
+
+        Includes the monetary-impact fields expected by the audit dashboard
+        (estimated_annual_loss_cents / category) so it never renders NaN.
+        """
         return AnalysisResult(
             score=0,
-            findings=[{"issue": "Analysis unavailable", "severity": "high", "detail": detail}],
+            findings=[{
+                "issue": "Analysis unavailable",
+                "severity": "high",
+                "detail": detail,
+                "category": "sales",
+                "estimated_annual_loss_cents": 0,
+            }],
             suggestions=[],
         )
 

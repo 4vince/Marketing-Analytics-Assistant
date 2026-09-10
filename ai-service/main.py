@@ -24,8 +24,15 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize DB pools and start the background job worker on startup."""
+    """Provision scoped DB roles, initialize DB pools, and start the background job worker."""
     # Startup
+    try:
+        from scoped_roles import ensure_scoped_roles
+        logger.info("[startup] Provisioning scoped database roles...")
+        await ensure_scoped_roles()
+    except Exception as e:
+        logger.warning("[startup] Scoped roles bootstrap skipped: %s", e)
+
     try:
         from db import pool
         logger.info("[startup] Initializing database connection pools...")
@@ -198,14 +205,21 @@ def _fetch_own_products_sync() -> list[dict]:
 
 
 async def _fetch_own_products() -> list[dict]:
-    """Fetch the user's own store products from the database for comparison."""
+    """Fetch the user's own store products from the database for comparison.
+
+    Uses a self-contained connection created on whatever event loop this runs
+    on, rather than the app-loop-bound global pool, so it is safe to call from
+    worker threads via _fetch_own_products_sync.
+    """
     try:
+        import asyncpg
         from db import pool
         from agents.types import AgentType
-        conn = await pool.get_connection(AgentType.ADMIN)
-        if conn is None:
+        dsn = pool._get_dsn(AgentType.ADMIN)
+        if not dsn:
             logger.warning("[competitor] No scoped DB connection available — skipping own products fetch")
             return []
+        conn = await asyncpg.connect(dsn=dsn, timeout=5)
         try:
             rows = await conn.fetch(
                 "SELECT id, name, price, category, description, slug, "

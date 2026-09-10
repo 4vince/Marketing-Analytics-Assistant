@@ -8,6 +8,10 @@ services:
     ports:
       - "8000:8000"
     env_file: ./ai-service/.env
+    environment:
+      - DATABASE_URL=postgresql://user:password@postgres:5432/ecommerce
+      - DATABASE_URL_STOREFRONT=postgresql://storefront_user:storefront_dev_only@postgres:5432/ecommerce
+      - DATABASE_URL_ADMIN=postgresql://admin_user:admin_dev_only@postgres:5432/ecommerce
   postgres:
     image: postgres:16
     environment:

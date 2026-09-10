@@ -1,6 +1,6 @@
 # Tests for chat agents — validates respond() returns messages for catalog queries, empty catalogs, and failures.
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock
 
 sys.path.insert(0, ".")
 import pytest
@@ -11,8 +11,11 @@ from agents.base import ChatAgent, ChatContext, ChatResponse
 class TestStorefrontChatAgent:
     @pytest.mark.asyncio
     async def test_chat_responds(self):
-        """Real LLM call with a catalog should return a non-empty response."""
+        """Agent returns a non-empty response for a catalog query (LLM stubbed)."""
         agent = StorefrontChatAgent()
+        agent.llm.chat_async = AsyncMock(
+            return_value="We have a great selection — check out Widget for $29.99."
+        )
         ctx = ChatContext(
             conversation_id="test-1",
             product_catalog=[{"name": "Widget", "price": 2999, "category": "gadgets"}],
@@ -22,15 +25,19 @@ class TestStorefrontChatAgent:
 
     @pytest.mark.asyncio
     async def test_chat_no_catalog(self):
-        """Agent should respond even without a product catalog."""
+        """Agent should respond even without a product catalog (LLM stubbed)."""
         agent = StorefrontChatAgent()
+        agent.llm.chat_async = AsyncMock(
+            return_value="Hello! Ask me about our products and I'll help you out."
+        )
         ctx = ChatContext(conversation_id="test-2")
         resp = await agent.respond("Hello", ctx)
         assert len(resp.message) > 0
 
     @pytest.mark.asyncio
     async def test_chat_llm_failure_returns_fallback(self, monkeypatch):
-        """When the LLM call fails, the agent returns a fallback message instead of crashing."""
+        """When the LLM client exhausts its own retries (RuntimeError), the agent
+        returns a fallback message without re-retrying — LLMClient handles retries."""
         agent = StorefrontChatAgent()
         # Replace the underlying LLM client with one that raises
         mock_llm = MagicMock()
@@ -42,7 +49,9 @@ class TestStorefrontChatAgent:
 
         # Should get a fallback message, not an exception
         assert len(resp.message) > 0
-        assert mock_llm.chat_async.call_count == agent.max_retries + 1
+        assert "temporarily unavailable" in resp.message.lower()
+        # RuntimeError means LLMClient already exhausted retries — single call only
+        assert mock_llm.chat_async.call_count == 1
 
     def test_format_catalog(self):
         """_format_catalog produces correct string from product list."""

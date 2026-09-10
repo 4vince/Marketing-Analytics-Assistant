@@ -129,6 +129,7 @@ class TestBaseAgentHelpers:
     def test_run_llm_analysis_succeeds_after_retry(self, monkeypatch):
         """Retry eventually succeeds after initial failures."""
         agent = _TestAgent()
+        agent.max_retries = 1  # two attempts total: first fails, second succeeds
         mock_llm = MagicMock()
         # Fail once with bad JSON, then succeed
         valid_json = json.dumps({

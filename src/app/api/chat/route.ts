@@ -20,9 +20,12 @@ export async function POST(req: Request) {
     if (!aiRes.ok) throw new Error(`AI service returned ${aiRes.status}`);
     const data = await aiRes.json();
     return NextResponse.json(data);
-  } catch {
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error("Chat proxy error:", detail);
     return NextResponse.json({
       message: "I'm sorry, our AI assistant is currently unavailable. Please check back later or contact us directly.",
+      detail,
     });
   }
 }

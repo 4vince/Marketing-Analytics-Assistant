@@ -15,7 +15,10 @@ class TestAdminChatAgent:
 
     @pytest.mark.asyncio
     async def test_responds_with_context(self, agent):
-        """Agent should respond when given full business context."""
+        """Agent should respond when given full business context (LLM stubbed)."""
+        agent.llm.chat_async = AsyncMock(
+            return_value="Your store is doing well — revenue is up and orders are stable."
+        )
         ctx = ChatContext(
             conversation_id="admin-test-1",
             product_catalog=[
@@ -29,14 +32,18 @@ class TestAdminChatAgent:
 
     @pytest.mark.asyncio
     async def test_responds_without_context(self, agent):
-        """Agent should respond gracefully even without any business context."""
+        """Agent should respond gracefully even without any business context (LLM stubbed)."""
+        agent.llm.chat_async = AsyncMock(
+            return_value="Hello! I can help you understand your store's performance."
+        )
         ctx = ChatContext(conversation_id="admin-test-2")
         resp = await agent.respond("Hello", ctx)
         assert len(resp.message) > 0
 
     @pytest.mark.asyncio
     async def test_llm_failure_returns_fallback(self, agent):
-        """When the LLM call fails, the agent returns a fallback message."""
+        """When the LLM client exhausts its own retries (RuntimeError), the agent
+        returns a fallback message without re-retrying — LLMClient handles retries."""
         mock_llm = MagicMock()
         mock_llm.chat_async.side_effect = RuntimeError("API failure")
         agent.llm = mock_llm
@@ -45,7 +52,9 @@ class TestAdminChatAgent:
         resp = await agent.respond("Hello", ctx)
 
         assert len(resp.message) > 0
-        assert mock_llm.chat_async.call_count == agent.max_retries + 1
+        assert "temporarily unavailable" in resp.message.lower()
+        # RuntimeError means LLMClient already exhausted retries — single call only
+        assert mock_llm.chat_async.call_count == 1
 
     def test_build_system_prompt_product_summary(self, agent):
         """_build_system_prompt includes product summary data."""

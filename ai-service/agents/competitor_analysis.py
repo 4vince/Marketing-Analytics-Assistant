@@ -52,19 +52,10 @@ class CompetitorAnalysisAgent(BaseAgent):
                 raw = self.llm.chat(system_prompt, user_prompt, model=model)
                 data = json.loads(raw)
 
-                score = data.get("score")
-                findings = data.get("findings")
-                suggestions = data.get("suggestions")
                 summary = data.get("summary", "")
                 markdown_report = data.get("markdown_report", "")
 
-                if not isinstance(score, int) or not isinstance(findings, list) or not isinstance(suggestions, list):
-                    raise ValueError(
-                        f"Invalid response structure: score={type(score).__name__}, "
-                        f"findings={type(findings).__name__}, suggestions={type(suggestions).__name__}"
-                    )
-
-                result = AnalysisResult(score=score, findings=findings, suggestions=suggestions)
+                result = self._build_result(data)
                 # Extra fields for report generation (stored via __dict__ since
                 # AnalysisResult is a strict Pydantic model without extra=allow)
                 result.__dict__["summary"] = summary

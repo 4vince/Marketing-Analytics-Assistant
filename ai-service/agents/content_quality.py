@@ -14,11 +14,7 @@ class ContentQualityAgent(BaseAgent):
 
     def analyze(self, content: dict) -> AnalysisResult:
         if self.llm is None:
-            return AnalysisResult(
-                score=0,
-                findings=[{"issue": "Analysis unavailable", "severity": "high", "detail": "LLM analysis failed to return valid results. Check API keys and network connectivity."}],
-                suggestions=[]
-            )
+            return self._fallback_result("LLM analysis failed to return valid results. Check API keys and network connectivity.")
         prompt = f"""
 Analyze this e-commerce product content for quality:
 
@@ -35,11 +31,6 @@ Return JSON: {{"score": int, "findings": [{{"issue": str, "severity": "high"/"me
 """
         try:
             result = self.llm.chat("You are an expert e-commerce content analyst.", prompt)
-            data = json.loads(result)
-            return AnalysisResult(**data)
-        except json.JSONDecodeError:
-            return AnalysisResult(
-                score=0,
-                findings=[{"issue": "Analysis unavailable", "severity": "high", "detail": "LLM analysis failed to return valid results. Check API keys and network connectivity."}],
-                suggestions=[]
-            )
+            return self._build_result(json.loads(result))
+        except (json.JSONDecodeError, ValueError, TypeError):
+            return self._fallback_result("LLM analysis failed to return valid results. Check API keys and network connectivity.")
