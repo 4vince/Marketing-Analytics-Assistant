@@ -8,3 +8,4 @@ ai-service/.env
 .DS_Store
 *.tsbuildinfo
 next-env.d.ts
+graphify-out

@@ -64,6 +64,9 @@ class BaseAgent(ABC):
 
         Handles all failure modes (missing LLM, bad JSON, invalid schema) and
         returns a consistent fallback result so subclasses don't need try/except.
+
+        The LLMClient handles its own retries for transient failures (rate limits,
+        empty responses). This method retries only on JSON parsing / validation errors.
         """
         if self.llm is None:
             return self._fallback_result(
@@ -72,7 +75,7 @@ class BaseAgent(ABC):
 
         last_error: str | None = None
         model = self._get_model()
-        for _ in range(self.max_retries + 1):
+        for attempt in range(self.max_retries + 1):
             try:
                 raw = self.llm.chat(system_prompt, user_prompt, model=model)
                 data = json.loads(raw)
@@ -86,6 +89,10 @@ class BaseAgent(ABC):
                                      f"findings={type(findings).__name__}, suggestions={type(suggestions).__name__}")
 
                 return AnalysisResult(score=score, findings=findings, suggestions=suggestions)
+            except RuntimeError as e:
+                # LLMClient exhausted all retries — don't retry at agent level
+                last_error = str(e)
+                break
             except (json.JSONDecodeError, ValueError, KeyError, TypeError) as e:
                 last_error = str(e)
                 continue
@@ -203,6 +210,9 @@ class ChatAgent(ABC):
 
         Handles all failure modes (missing LLM, API errors) and returns a
         consistent fallback response so subclasses don't need try/except.
+
+        The LLMClient handles its own retries for transient failures. This method
+        retries only on unexpected errors.
         """
         if self.llm is None:
             return self._fallback_response(
@@ -214,6 +224,10 @@ class ChatAgent(ABC):
             try:
                 result = await self.llm.chat_async(system_prompt, user_message, model=model)
                 return ChatResponse(message=result)
+            except RuntimeError as e:
+                # LLMClient exhausted all retries — don't retry at agent level
+                print(f"[ChatAgent] LLM failed (all retries exhausted): {e}")
+                break
             except Exception as e:
                 print(f"[ChatAgent] LLM attempt {attempt + 1}/{self.max_retries + 1} failed: {type(e).__name__}: {e}")
                 continue
